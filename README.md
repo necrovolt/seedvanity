@@ -145,6 +145,10 @@ Other options: `--count N` (stop after N hits, default 1), `--out FILE`, `--benc
 - `verify-go/`, `go.mod`, `go.sum`: verifier based on tonutils-go (Go).
 - `results/`: created at run time for hits and logs; ignored by git.
 
+## Credits
+
+Created by [miutalk](https://t.me/miutalk) & [Vibes 18+](https://t.me/vibes).
+
 ## Disclaimer
 
 Provided as is, without warranty of any kind. You are responsible for checking every address before

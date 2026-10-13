@@ -1,7 +1,7 @@
 # seedvanity for Linux and Windows (OpenCL)
 
 The GPU computes PBKDF2-HMAC-SHA512 and, for BIP39, the SLIP-10 derivation along `m/44'/607'/0'`
-(`kernel.cl`). The CPU computes Ed25519 public keys ([Monocypher](https://monocypher.org)), W5
+(`kernel.cl`). The CPU computes Ed25519 public keys ([Monocypher](https://monocypher.org)), wallet
 addresses and the ending check on all threads. On a strong GPU the CPU is the limit; that is
 expected.
 
@@ -47,6 +47,7 @@ With several GPUs pick one with `--device N`.
 
 ```sh
 ./seedvanity --suffix '[a-z_]HELLO' --mode bip39-12
+./seedvanity --suffix '[a-z_]HELLO' --wallet tg      # Telegram wallet
 ```
 
 A progress line is printed every 30 s. On a hit the tool prints `HIT <address>` and exits
@@ -58,13 +59,15 @@ system sleep:
 ```sh
 nohup setsid systemd-inhibit --what=sleep:idle ./supervise.sh '[a-z_]HELLO' bip39-12 \
   ../results/found.txt ../results/run.log >/dev/null 2>&1 &
+# Telegram wallet: add tg after the log file name
 tail -1 ../results/run.log                                   # progress
 pkill -f supervise.sh; pkill -f "seedvanity --suffix"        # stop (supervisor first)
 ```
 
 On Windows keep the window open and disable sleep in the power settings.
 
-Options: `--mode bip39-12|bip39-24|ton-24`, `--form uq|eq`, `--ignore-case`, `--threads N` (CPU
+Options: `--mode bip39-12|bip39-24|ton-24`, `--wallet w5|tg` (`tg` = the Telegram wallet, 12-word phrases
+only), `--form uq|eq`, `--ignore-case`, `--threads N` (CPU
 threads, default: all), `--count N`, `--out FILE` (default `../results/found.txt`), `--bench SECONDS`,
 `--device N`, `--list-devices`, `--no-verify`, `--dump N FILE` (writes N random phrases with their
 addresses for external cross-checks).
@@ -88,8 +91,8 @@ addresses for external cross-checks).
 - Every hit is derived again on the CPU (Monocypher HMAC-SHA512 PBKDF2, SLIP-10, Ed25519) and must
   match the GPU result, then it is re-checked by both verifiers.
 - Self-test on every start: SHA-256 and the BIP39 PBKDF2 test vector on the CPU, GPU against CPU
-  for PBKDF2 and SLIP-10 (keys longer than 128 bytes, forced chunk boundaries), W5 addresses of fixed
-  test phrases against values from @ton/ton, BIP39 checksums.
+  for PBKDF2 and SLIP-10 (keys longer than 128 bytes, forced chunk boundaries), W5 and Telegram wallet
+  addresses of fixed test phrases against values from @ton/ton, BIP39 checksums.
 - `embedded.h` holds the kernel source and the BIP-0039 wordlist; regenerate it with `make embed`
   (python3) after editing `kernel.cl`, `sha512_consts.h` or `english.txt`.
 - `third_party/monocypher/`: Monocypher, CC0 or 2-clause BSD (see `LICENCE.md`, `VERSION`).

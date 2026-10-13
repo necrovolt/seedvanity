@@ -2,9 +2,12 @@
 
 **Vanity TON wallet addresses with a real seed phrase, GPU-accelerated.**
 
-seedvanity searches for a seed phrase whose **W5 (v5r1)** wallet address ends with characters you
-choose, for example `…HELLO`. The phrase is an ordinary one: import it into **Tonkeeper** or
-**My Wallet**, select W5, and the wallet shows exactly that address.
+seedvanity searches for a seed phrase whose TON wallet address ends with characters you choose, for
+example `…HELLO`. The phrase is an ordinary one, and after import the wallet shows exactly that
+address:
+
+- **W5 (v5r1)** in **Tonkeeper** or **My Wallet** (default);
+- the wallet built into **Telegram** (contract `WalletTg`) with `--wallet tg`.
 
 ## Versions
 
@@ -32,9 +35,11 @@ full key derivation, which is what the GPU is for.
 1. A random phrase from the operating system's CSPRNG: BIP39 (128 or 256 bits of entropy plus
    checksum) or a TON standard phrase (24 random words that pass the "basic seed" check).
 2. PBKDF2-HMAC-SHA512 on the GPU: 2048 iterations for BIP39, 100 000 for the TON standard.
-3. BIP39 only: SLIP-10 ed25519 derivation along `m/44'/607'/0'` (what Tonkeeper and My Wallet use).
+3. BIP39 only: SLIP-10 ed25519 derivation along `m/44'/607'/0'` (what Tonkeeper, My Wallet and
+   Telegram use).
 4. Ed25519 public key.
-5. W5 (v5r1) StateInit hash, user-friendly address, pattern match.
+5. StateInit hash of the wallet (W5 v5r1 or the Telegram wallet), user-friendly address, pattern
+   match.
 6. A hit is derived again independently and verified by two libraries before it is reported.
 
 ## Performance
@@ -80,6 +85,7 @@ go build -o verify-go/w5addr ./verify-go     # tonutils-go verifier (w5addr.exe 
 ./macos/build.sh
 cd macos && ./seedvanity --mode bip39-12 --bench 40
 caffeinate -i ./seedvanity --suffix '[a-z_]HELLO' --mode bip39-12
+caffeinate -i ./seedvanity --suffix '[a-z_]HELLO' --wallet tg      # Telegram wallet
 ```
 
 **Linux** (Ubuntu: `sudo apt install build-essential ocl-icd-opencl-dev clinfo` plus the GPU driver
@@ -90,6 +96,7 @@ cd opencl && make
 ./seedvanity --list-devices
 ./seedvanity --mode bip39-12 --bench 60
 ./seedvanity --suffix '[a-z_]HELLO' --mode bip39-12
+./seedvanity --suffix '[a-z_]HELLO' --wallet tg      # Telegram wallet
 ```
 
 **Windows**: build in an MSYS2 UCRT64 shell, see [opencl/README.md](opencl/README.md).
@@ -103,18 +110,23 @@ cd opencl && make
   `_`, then `HELLO`.
 - `--ignore-case` ignores the case of letters.
 - Addresses only contain `A-Z a-z 0-9 - _`. Quote patterns with `[...]` in the shell.
-- The ending is matched in the non-bounceable form `UQ…` that wallets show for W5 (`--form eq` for
+- The ending is matched in the non-bounceable form `UQ…` that wallets show (`--form eq` for
   `EQ…`). The two forms of one address end differently, because the last characters are a checksum.
 
 ### Modes (`--mode`)
 
 | Mode | Phrase | Imports into | Speed |
 |---|---|---|---|
-| `bip39-12` | 12 words, BIP39, path m/44'/607'/0' | Tonkeeper, My Wallet | full |
+| `bip39-12` | 12 words, BIP39, path m/44'/607'/0' | Tonkeeper, My Wallet, Telegram | full |
 | `bip39-24` | 24 words, BIP39, path m/44'/607'/0' | Tonkeeper, My Wallet | about the same |
-| `ton-24` | 24 words, TON standard | every TON wallet, including Wallet in Telegram | ~100x slower |
+| `ton-24` | 24 words, TON standard | Tonkeeper, My Wallet and other TON wallets | ~100x slower |
 
-Wallet: W5 (v5r1), mainnet (network id -239), workchain 0, subwallet 0.
+### Wallets (`--wallet`)
+
+| Wallet | Contract | Modes | Imports into |
+|---|---|---|---|
+| `w5` (default) | W5 (v5r1), mainnet (network id -239), workchain 0, subwallet 0 | all | Tonkeeper, My Wallet (select W5) |
+| `tg` | `WalletTg` ([ton-blockchain/tg-wallet-contract](https://github.com/ton-blockchain/tg-wallet-contract)), mainnet, subwallet `0x7FFF7F11` | `bip39-12` only | the wallet built into Telegram |
 
 Other options: `--count N` (stop after N hits, default 1), `--out FILE`, `--bench SECONDS`,
 `--no-verify` (not recommended). Platform-specific options are described in each folder's README.
@@ -126,22 +138,24 @@ Other options: `--count N` (stop after N hits, default 1), `--out FILE`, `--benc
 - Every phrase gets fresh randomness from the operating system (`SecRandomCopyBytes` on macOS,
   `getrandom` on Linux, `BCryptGenRandom` on Windows). Everything runs locally, no network.
 - Every hit is verified before it is reported: the key is derived again on the CPU (OpenCL version),
-  then [`verify/w5addr.mjs`](verify/w5addr.mjs) (@ton/ton, @ton/crypto, bip39, ed25519-hd-key) and
-  [`verify-go`](verify-go/main.go) (tonutils-go) re-derive the address with the wallets' own import
-  logic. A hit that does not match exactly is written as `UNVERIFIED HIT, DO NOT USE`.
+  then [`verify/w5addr.mjs`](verify/w5addr.mjs) (@ton/ton, @ton/core, @ton/crypto, bip39,
+  ed25519-hd-key) and [`verify-go`](verify-go/main.go) (tonutils-go) re-derive the address with the
+  wallets' own import logic. A hit that does not match exactly is written as `UNVERIFIED HIT, DO NOT USE`.
 - Phrases that wallets could read two ways (valid both as BIP39 and as a TON standard phrase) are
   skipped: Tonkeeper tries the TON standard first, My Wallet tries BIP39 first.
-- A self-test runs on every start: GPU against CPU PBKDF2 (and SLIP-10), W5 addresses of fixed test
-  phrases against values from @ton/ton, BIP39 test vectors. The test phrases in the source code are
-  public test vectors or throwaway phrases created for the tests; never send funds to them.
-- Before sending real money: import the phrase, select W5, compare the address and make a small test
-  transfer out and back. Then write the phrase down and delete the results file.
+- A self-test runs on every start: GPU against CPU PBKDF2 (and SLIP-10), W5 and Telegram wallet
+  addresses of fixed test phrases against values from @ton/ton, BIP39 test vectors. The test phrases
+  in the source code are public test vectors or throwaway phrases created for the tests; never send
+  funds to them.
+- Before sending real money: import the phrase (in Tonkeeper or My Wallet select W5), compare the
+  address and make a small test transfer out and back. Then write the phrase down and delete the
+  results file.
 
 ## Project layout
 
 - `macos/`: Swift + Metal version. Technical notes: [macos/README.md](macos/README.md).
 - `opencl/`: C + OpenCL version. Build and technical notes: [opencl/README.md](opencl/README.md).
-- `verify/`: verifier based on @ton/ton (JavaScript).
+- `verify/`: verifier based on @ton/ton and @ton/core (JavaScript).
 - `verify-go/`, `go.mod`, `go.sum`: verifier based on tonutils-go (Go).
 - `results/`: created at run time for hits and logs; ignored by git.
 

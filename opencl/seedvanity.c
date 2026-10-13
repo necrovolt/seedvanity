@@ -1,11 +1,12 @@
-// seedvanity (OpenCL): finds a seed phrase whose TON W5 (v5r1) wallet address ends with a pattern.
+// seedvanity (OpenCL): finds a seed phrase whose TON wallet address (W5 or the Telegram wallet) ends with a pattern.
 //
 // Platforms: Linux and Windows with any OpenCL GPU (NVIDIA, AMD, Intel); builds on macOS for testing.
 // GPU: PBKDF2-HMAC-SHA512 (+ SLIP-10 m/44'/607'/0' for BIP39) in kernel.cl.
-// CPU: Ed25519 public key (Monocypher), W5 address, pattern check, in parallel threads.
+// CPU: Ed25519 public key (Monocypher), wallet address, pattern check, in parallel threads.
 //
-// Wallet: W5 = v5r1, mainnet (network id -239), workchain 0, subwallet 0: the address Tonkeeper and
-// My Wallet show for W5. Seed phrases are written only to the results file, never to stdout.
+// Wallets: W5 = v5r1, mainnet (network id -239), workchain 0, subwallet 0: the address Tonkeeper and
+// My Wallet show for W5. tg = the wallet built into Telegram (contract WalletTg), 12-word phrases only.
+// Seed phrases are written only to the results file, never to stdout.
 // Every hit is re-derived on the CPU and by two independent libraries (@ton/ton, tonutils-go).
 
 #if !defined(_WIN32) && !defined(__APPLE__)
@@ -196,10 +197,13 @@ static void parallel(int nt, void (*fn)(void *, int, int), void *ctx) {
 
 enum { BIP12, BIP24, TON24 };
 static const char *MODE_NAME[] = {"bip39-12", "bip39-24", "ton-24"};
+// W5: wallet v5r1 (Tonkeeper, My Wallet). TG: the Telegram wallet, contract WalletTg
+enum { W5, TG };
+static const char *WALLET_NAME[] = {"w5", "tg"};
 
 static struct {
     char suffix[128];
-    int mode, bounceable, ignore_case, threads, count, verify, device, list_devices;
+    int mode, wallet, bounceable, ignore_case, threads, count, verify, device, list_devices;
     char out[4096], dump_file[4096];
     double bench;
     int dump;
@@ -210,11 +214,12 @@ static uint8_t pattern[16][256]; // pattern[k][c]: byte c allowed at position k 
 static int pattern_len;
 
 static void usage(int code) {
-    printf("usage: seedvanity --suffix '[a-z_]HELLO' [--mode bip39-12|bip39-24|ton-24] [--form uq|eq]\n"
+    printf("usage: seedvanity --suffix '[a-z_]HELLO' [--mode bip39-12|bip39-24|ton-24] [--wallet w5|tg] [--form uq|eq]\n"
            "                 [--ignore-case] [--threads N] [--count N] [--out FILE] [--bench SEC]\n"
            "                 [--device N] [--list-devices]\n"
            "  --suffix       ending; [..] = one of the listed characters, ranges allowed\n"
-           "  --form uq      non-bounceable form UQ... (what wallets show for W5), default\n"
+           "  --wallet w5    wallet v5r1 (Tonkeeper, My Wallet), default; tg = Telegram wallet, 12 words only\n"
+           "  --form uq      non-bounceable form UQ... (what wallets show), default\n"
            "  --threads N    CPU threads for Ed25519 and addresses (default: all logical CPUs)\n"
            "  --count N      stop after N verified hits (default 1)\n"
            "  --device N     OpenCL GPU to use (see --list-devices), default 0\n");
@@ -443,6 +448,39 @@ static void w5_account_id(const uint8_t pub[32], uint8_t id[32]) {
     memcpy(si + 7, W5_CODE_HASH, 32);
     memcpy(si + 39, dh, 32);
     sha256(si, sizeof si, id);
+}
+
+// Telegram wallet (WalletTg, github.com/ton-blockchain/tg-wallet-contract): the account code is an immutable
+// trampoline (a single cell that jumps to config[-123]); storage = revision:8 (0) | seqno:32 (0) |
+// subwalletId:32 | publicKey:256.
+static const uint8_t TG_TRAMPOLINE_HASH[32] = {
+    0x91, 0x49, 0xae, 0x51, 0xc1, 0xe4, 0x68, 0x97, 0x10, 0xce, 0xbf, 0x78, 0x30, 0x29, 0x7b, 0x16,
+    0xac, 0xfb, 0xad, 0xb3, 0x63, 0xa9, 0x20, 0xa5, 0x37, 0x89, 0x3e, 0x7f, 0xfe, 0xec, 0xa7, 0x68};
+#define TG_SUBWALLET_ID 0x7FFF7F11u // mainnet default
+
+static void tg_account_id(const uint8_t pub[32], uint8_t id[32]) {
+    // data cell, 328 bits = 41 whole bytes: descriptors 0x00, 82, no completion tag
+    uint8_t d[2 + 41] = {0}, dh[32], si[71];
+    d[1] = 82;
+    d[2 + 5] = (uint8_t)(TG_SUBWALLET_ID >> 24); d[2 + 6] = (uint8_t)(TG_SUBWALLET_ID >> 16);
+    d[2 + 7] = (uint8_t)(TG_SUBWALLET_ID >> 8); d[2 + 8] = (uint8_t)TG_SUBWALLET_ID;
+    memcpy(d + 2 + 9, pub, 32);
+    sha256(d, sizeof d, dh);
+    // StateInit with code and data refs, both of depth 0
+    si[0] = 0x02; si[1] = 0x01; si[2] = 0x34;
+    si[3] = 0; si[4] = 0; si[5] = 0; si[6] = 0;
+    memcpy(si + 7, TG_TRAMPOLINE_HASH, 32);
+    memcpy(si + 39, dh, 32);
+    sha256(si, sizeof si, id);
+}
+
+static void account_id(const uint8_t pub[32], uint8_t id[32]) {
+    if (opt.wallet == TG) tg_account_id(pub, id); else w5_account_id(pub, id);
+}
+
+static const char *wallet_label(void) {
+    return opt.wallet == TG ? "Telegram wallet (WalletTg), mainnet, subwallet 0x7FFF7F11"
+                            : "W5 (v5r1), mainnet, workchain 0, subwallet 0";
 }
 
 static const char B64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -761,7 +799,7 @@ static int run_verifier(const char *cmd_prefix, const char *phrase, char *uq, ch
 #endif
     FILE *p = popen(cmd, "w");
     if (!p) return 0;
-    fprintf(p, "{\"words\":\"%s\"}\n", phrase);
+    fprintf(p, "{\"words\":\"%s\",\"wallet\":\"%s\"}\n", phrase, WALLET_NAME[opt.wallet]);
     pclose(p);
     FILE *f = fopen(tmp, "rb");
     if (!f) return 0;
@@ -803,7 +841,7 @@ static void handle_hit(const int *idx, int nw, const uint8_t priv_gpu[32]) {
         cpu_slip10(seed, priv);
     }
     ed25519_public(priv, pub);
-    w5_account_id(pub, id);
+    account_id(pub, id);
     char uq[49], eq[49], pubhex[65];
     friendly(id, 0, uq);
     friendly(id, 1, eq);
@@ -858,11 +896,12 @@ static void handle_hit(const int *idx, int nw, const uint8_t priv_gpu[32]) {
 #endif
     strftime(stamp, sizeof stamp, "%Y-%m-%dT%H:%M:%SZ", &tmv);
     snprintf(text, sizeof text,
-             "=== %s %s\nphrase (%d words, %s): %s\nwallet: W5 (v5r1), mainnet, workchain 0, subwallet 0\n"
+             "=== %s %s\nphrase (%d words, %s): %s\nwallet: %s\n"
              "public key: %s\naddress UQ (non-bounceable, shown by wallets): %s\naddress EQ (bounceable): %s\n"
              "independent checks: %s\n\n\n",
              ok ? "HIT" : "UNVERIFIED HIT, DO NOT USE", stamp, nw,
-             opt.mode == TON24 ? "TON standard" : "BIP39, path m/44'/607'/0'", phrase, pubhex, uq, eq, checks);
+             opt.mode == TON24 ? "TON standard" : "BIP39, path m/44'/607'/0'", phrase, wallet_label(), pubhex, uq, eq,
+             checks);
     append_secret(text);
     crypto_wipe(phrase, sizeof phrase);
     crypto_wipe(text, sizeof text);
@@ -877,12 +916,12 @@ static void handle_hit(const int *idx, int nw, const uint8_t priv_gpu[32]) {
     mutex_unlock(&hit_lock);
 }
 
-// Final CPU part for one derived private key: public key, W5 address, pattern check.
+// Final CPU part for one derived private key: public key, wallet address, pattern check.
 static void finish(const int *idx, int nw, const uint8_t priv[32]) {
     uint8_t pub[32], id[32];
     char addr[49];
     ed25519_public(priv, pub);
-    w5_account_id(pub, id);
+    account_id(pub, id);
     friendly(id, opt.bounceable, addr);
     if (opt.dump) {
         mutex_lock(&stat_lock);
@@ -891,7 +930,8 @@ static void finish(const int *idx, int nw, const uint8_t priv[32]) {
             phrase_bytes(idx, nw, phrase);
             friendly(id, 0, uq);
             hexs(pub, 32, ph);
-            fprintf(dump_fp, "{\"words\":\"%s\",\"uq\":\"%s\",\"pub\":\"%s\",\"src\":\"opencl\"}\n", phrase, uq, ph);
+            fprintf(dump_fp, "{\"words\":\"%s\",\"uq\":\"%s\",\"pub\":\"%s\",\"src\":\"opencl\",\"wallet\":\"%s\"}\n", phrase,
+                    uq, ph, WALLET_NAME[opt.wallet]);
             dumped++;
         }
         mutex_unlock(&stat_lock);
@@ -1037,6 +1077,16 @@ static void self_test(void) {
         friendly(id, 0, uq);
         if (strcmp(uq, vec[v].want)) die("SELF-TEST FAILED: %s W5 address %s != %s", MODE_NAME[vec[v].mode], uq, vec[v].want);
     }
+    { // Telegram wallet address of the BIP39 test phrase, value from @ton/core
+        uint8_t priv[32], pub[32], id[32], s[64];
+        cpu_pbkdf2((const uint8_t *)vec[0].phrase, strlen(vec[0].phrase), SALT_MNEMONIC, 8, 2048, s);
+        cpu_slip10(s, priv);
+        ed25519_public(priv, pub);
+        tg_account_id(pub, id);
+        char uq[49];
+        friendly(id, 0, uq);
+        if (strcmp(uq, "UQD4d2pzr-W4jzh1wOd52HrsH7rRagzkSUPC3_jCgMxmKz_L")) die("SELF-TEST FAILED: Telegram wallet address %s", uq);
+    }
     if (!ton_valid(vec[2].phrase, strlen(vec[2].phrase))) die("SELF-TEST FAILED: TON validity");
     // 3. GPU PBKDF2 + SLIP-10 == CPU, incl. >128-byte keys and chunked iterations
     enum { N = 40 };
@@ -1109,6 +1159,11 @@ int main(int argc, char **argv) {
             else if (!strcmp(m, "bip39-24")) opt.mode = BIP24;
             else if (!strcmp(m, "ton-24")) opt.mode = TON24;
             else die("mode: bip39-12 | bip39-24 | ton-24");
+        } else if (!strcmp(a, "--wallet")) {
+            const char *w = NEXT();
+            if (!strcmp(w, "w5")) opt.wallet = W5;
+            else if (!strcmp(w, "tg")) opt.wallet = TG;
+            else die("wallet: w5 | tg");
         } else if (!strcmp(a, "--form")) {
             const char *f = NEXT();
             if (!strcmp(f, "uq")) opt.bounceable = 0;
@@ -1129,6 +1184,8 @@ int main(int argc, char **argv) {
     if (opt.threads < 1) opt.threads = 1;
     if (opt.count < 1) opt.count = 1;
     if (!opt.bench && !opt.dump && !opt.list_devices && !opt.suffix[0]) die("--suffix is required (see --help)");
+    // Telegram reads a 24-word phrase as two 12-word halves (anchor + rotated key), so only 12 words make sense here
+    if (opt.wallet == TG && opt.mode != BIP12) die("--wallet tg works with --mode bip39-12 only (a 12-word phrase)");
     parse_pattern(opt.suffix);
     mutex_init(&hit_lock);
     mutex_init(&stat_lock);
@@ -1137,11 +1194,13 @@ int main(int argc, char **argv) {
     make_mkey();
     double t0 = now_sec();
     self_test();
-    printf("GPU %s; self-test OK (GPU PBKDF2 and SLIP-10 == CPU, W5 v5r1 addresses == @ton/ton) in %.1f s\n", gpu.name, now_sec() - t0);
+    printf("GPU %s; self-test OK (GPU PBKDF2 and SLIP-10 == CPU, W5 and Telegram wallet addresses == @ton/ton) in %.1f s\n",
+           gpu.name, now_sec() - t0);
     double expected = expected_tries();
     if (!opt.dump && !opt.bench) {
-        printf("search: ending \"%s\"%s in %s form, mode %s, W5 v5r1 mainnet subwallet 0, %d CPU threads\n", opt.suffix,
-               opt.ignore_case ? " (any case)" : "", opt.bounceable ? "EQ" : "UQ", MODE_NAME[opt.mode], opt.threads);
+        printf("search: ending \"%s\"%s in %s form, mode %s, %s, %d CPU threads\n", opt.suffix,
+               opt.ignore_case ? " (any case)" : "", opt.bounceable ? "EQ" : "UQ", MODE_NAME[opt.mode], wallet_label(),
+               opt.threads);
         printf("expected ~%.3g phrases; results -> %s (phrases are never printed)\n", expected, opt.out);
     }
     if (opt.dump) {
@@ -1229,7 +1288,7 @@ int main(int argc, char **argv) {
         mutex_unlock(&stat_lock);
         if (opt.dump && dmp >= opt.dump) {
             fclose(dump_fp);
-            printf("dumped %d phrases with their W5 addresses to %s\n", dmp, opt.dump_file);
+            printf("dumped %d phrases with their wallet addresses to %s\n", dmp, opt.dump_file);
             return 0;
         }
         if (opt.bench > 0 && el >= opt.bench) {

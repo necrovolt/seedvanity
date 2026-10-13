@@ -1,7 +1,7 @@
 # seedvanity (OpenCL)
 #   Linux:          make
 #   Windows:        make   (in an MSYS2 UCRT64 or MINGW64 shell, see README)
-#   macOS:          make   (for testing only; on a Mac use the Metal version in gpu/)
+#   macOS:          make   (for testing only; on a Mac use the Metal version in macos/)
 # embedded.h (kernel + wordlist) is generated and shipped; regenerate with `make embed` (needs python3).
 SRC = seedvanity.c sha256.c third_party/monocypher/monocypher.c third_party/monocypher/monocypher-ed25519.c
 CFLAGS ?= -O3 -Wall -Wextra -Wno-unused-parameter

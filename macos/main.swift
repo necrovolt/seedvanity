@@ -30,6 +30,10 @@ func orDie<T>(_ v: T?, _ msg: String) -> T {
 
 enum Mode: String { case bip12 = "bip39-12", bip24 = "bip39-24", ton24 = "ton-24" }
 
+// w5: wallet v5r1 (Tonkeeper, My Wallet). tg: the wallet built into Telegram, contract WalletTg:
+// a trampoline that jumps to config[-123], storage = revision 0, seqno 0, subwalletId, public key.
+enum WalletKind: String { case w5, tg }
+
 // Default CPU workers: performance cores minus 2 (they keep the GPU fed and the Mac responsive).
 // Measured on a chip with 8 performance cores: 6 threads add ~+19 000/s with no loss on the GPU side.
 func defaultCpuWorkers() -> Int {
@@ -42,6 +46,7 @@ func defaultCpuWorkers() -> Int {
 struct Options {
     var suffix = ""
     var mode = Mode.bip12
+    var wallet = WalletKind.w5
     var bounceable = false
     var ignoreCase = false
     var cpuWorkers = defaultCpuWorkers()
@@ -69,6 +74,7 @@ do {
         switch k {
         case "--suffix": opt.suffix = next(k)
         case "--mode": opt.mode = orDie(Mode(rawValue: next(k)), "mode: bip39-12 | bip39-24 | ton-24")
+        case "--wallet": opt.wallet = orDie(WalletKind(rawValue: next(k)), "wallet: w5 | tg")
         case "--form":
             switch next(k) {
             case "uq": opt.bounceable = false
@@ -84,10 +90,11 @@ do {
         case "--no-verify": opt.verify = false
         default:
             print("""
-            usage: seedvanity --suffix '[a-z_]HELLO' [--mode bip39-12|bip39-24|ton-24] [--form uq|eq]
+            usage: seedvanity --suffix '[a-z_]HELLO' [--mode bip39-12|bip39-24|ton-24] [--wallet w5|tg] [--form uq|eq]
                              [--ignore-case] [--cpu N] [--count N] [--out FILE] [--bench SEC]
               --suffix       ending; [..] = one of the listed characters, ranges allowed
-              --form uq      non-bounceable form UQ... (what wallets show for W5), default
+              --wallet w5    wallet v5r1 (Tonkeeper, My Wallet), default; tg = Telegram wallet, 12 words only
+              --form uq      non-bounceable form UQ... (what wallets show), default
               --cpu N        CPU worker threads next to the GPU (default: performance cores - 2, 0 = GPU only);
                              they pause while macOS reports a serious thermal state
               --count N      stop after N verified hits (default 1)
@@ -97,6 +104,8 @@ do {
     }
     let b64 = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
     if opt.bench == 0 && opt.dump == 0 && opt.suffix.isEmpty { die("--suffix is required (see --help)") }
+    // Telegram reads a 24-word phrase as two 12-word halves (anchor + rotated key), so only 12 words make sense here
+    if opt.wallet == .tg && opt.mode != .bip12 { die("--wallet tg works with --mode bip39-12 only (a 12-word phrase)") }
     _ = b64
 }
 
@@ -271,6 +280,22 @@ func w5AccountId(_ pub: [UInt8]) -> [UInt8] {
     // StateInit: split_depth 0, special 0, code 1, data 1, library 0 -> "00110" + tag = 0x34, 2 refs
     return sha256([0x02, 0x01, 0x34] + w5CodeDepth + [0x00, 0x00] + w5CodeHash + dataHash)
 }
+// Telegram wallet (WalletTg, github.com/ton-blockchain/tg-wallet-contract): the account code is an immutable
+// trampoline (jumps to config[-123]); storage = revision:8 (0) | seqno:32 (0) | subwalletId:32 | publicKey:256.
+let tgTrampolineHash = unhex("9149ae51c1e4689710cebf7830297b16acfbadb363a920a537893e7ffeeca768")
+let tgSubwalletId: UInt32 = 0x7FFF_7F11 // mainnet default
+func tgAccountId(_ pub: [UInt8]) -> [UInt8] {
+    let sid = tgSubwalletId
+    // 328 bits = 41 whole bytes: descriptor d2 = 82, no completion tag
+    let data: [UInt8] = [0x00, 82, 0x00, 0, 0, 0, 0,
+                         UInt8(sid >> 24), UInt8((sid >> 16) & 0xFF), UInt8((sid >> 8) & 0xFF), UInt8(sid & 0xFF)] + pub
+    let dataHash = sha256(data)
+    // StateInit with code and data refs, both of depth 0 (the trampoline is a single cell)
+    return sha256([0x02, 0x01, 0x34, 0x00, 0x00, 0x00, 0x00] + tgTrampolineHash + dataHash)
+}
+@inline(__always) func accountId(_ pub: [UInt8]) -> [UInt8] { opt.wallet == .tg ? tgAccountId(pub) : w5AccountId(pub) }
+let walletLabel = opt.wallet == .tg ? "Telegram wallet (WalletTg), mainnet, subwallet 0x7FFF7F11" : "W5 (v5r1), mainnet, workchain 0, subwallet 0"
+
 func friendly(_ accountId: [UInt8], bounceable: Bool) -> [UInt8] {
     var b: [UInt8] = [bounceable ? 0x11 : 0x51, 0x00] + accountId
     var crc: UInt16 = 0
@@ -444,7 +469,7 @@ func handleHit(_ idx: [Int], pub: [UInt8], accountId: [UInt8]) {
     var checks = [String]()
     var ok = true
     if opt.verify {
-        let line = "{\"words\":\"\(phraseString(idx))\"}\n"
+        let line = "{\"words\":\"\(phraseString(idx))\",\"wallet\":\"\(opt.wallet.rawValue)\"}\n"
         let v1 = runVerifier("/usr/bin/env", ["node", "w5addr.mjs"], cwd: rootDir.appendingPathComponent("verify"), input: line)
         let v2 = runVerifier(rootDir.appendingPathComponent("verify-go/w5addr").path, [], cwd: rootDir, input: line)
         for (name, v) in [("@ton/ton", v1), ("tonutils-go", v2)] {
@@ -462,7 +487,7 @@ func handleHit(_ idx: [Int], pub: [UInt8], accountId: [UInt8]) {
     appendSecret("""
     === \(ok ? "HIT" : "UNVERIFIED HIT, DO NOT USE") \(stamp)
     phrase (\(idx.count) words, \(opt.mode == .ton24 ? "TON standard" : "BIP39, path m/44'/607'/0'")): \(phraseString(idx))
-    wallet: W5 (v5r1), mainnet, workchain 0, subwallet 0
+    wallet: \(walletLabel)
     public key: \(hex(pub))
     address UQ (non-bounceable, shown by wallets): \(uq)
     address EQ (bounceable): \(eq)
@@ -481,13 +506,13 @@ func handleHit(_ idx: [Int], pub: [UInt8], accountId: [UInt8]) {
 // Final CPU part for one derived private key: W5 address + suffix check (+ dump for tests).
 @inline(__always) func finish(_ idx: () -> [Int], priv: [UInt8], src: String = "gpu") {
     let pub = ed25519Public(priv)
-    let id = w5AccountId(pub)
+    let id = accountId(pub)
     let addr = friendly(id, bounceable: opt.bounceable)
     if opt.dump > 0 {
         shared.lock.lock()
         if shared.dumped < opt.dump {
             shared.dumped += 1
-            shared.dumpLines.append("{\"words\":\"\(phraseString(idx()))\",\"uq\":\"\(String(decoding: friendly(id, bounceable: false), as: UTF8.self))\",\"pub\":\"\(hex(pub))\",\"src\":\"\(src)\"}")
+            shared.dumpLines.append("{\"words\":\"\(phraseString(idx()))\",\"uq\":\"\(String(decoding: friendly(id, bounceable: false), as: UTF8.self))\",\"pub\":\"\(hex(pub))\",\"src\":\"\(src)\",\"wallet\":\"\(opt.wallet.rawValue)\"}")
         }
         shared.lock.unlock()
         return
@@ -525,6 +550,11 @@ func selfTest(_ gpu: GPU) {
         let got = String(decoding: friendly(w5AccountId(ed25519Public(priv)), bounceable: false), as: UTF8.self)
         if got != want { die("SELF-TEST FAILED: \(mode.rawValue) W5 address \(got) != \(want)") }
     }
+    do {
+        let p = Array("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".utf8)
+        let got = String(decoding: friendly(tgAccountId(ed25519Public(slip10(cpuPBKDF2(p, saltMnemonic, 2048)))), bounceable: false), as: UTF8.self)
+        if got != "UQD4d2pzr-W4jzh1wOd52HrsH7rRagzkSUPC3_jCgMxmKz_L" { die("SELF-TEST FAILED: Telegram wallet address \(got)") }
+    }
     // 3. CPU PBKDF2 on the SHA-512 instructions == CommonCrypto (incl. >128-byte keys)
     if cpu_has_sha512() != 0 {
         for i in 0..<6 {
@@ -550,9 +580,9 @@ let gpu = GPU()
 let t0 = Date()
 selfTest(gpu)
 let expected = pattern.reduce(1.0) { $0 * 64 / Double($1.filter { $0 }.count) }
-print("GPU \(gpu.dev.name); self-test OK (GPU and CPU PBKDF2 == CommonCrypto, W5 v5r1 addresses == @ton/ton) in \(String(format: "%.1f", Date().timeIntervalSince(t0))) s")
+print("GPU \(gpu.dev.name); self-test OK (GPU and CPU PBKDF2 == CommonCrypto, W5 and Telegram wallet addresses == @ton/ton) in \(String(format: "%.1f", Date().timeIntervalSince(t0))) s")
 if opt.dump == 0 && opt.bench == 0 {
-    print("search: ending \"\(opt.suffix)\"\(opt.ignoreCase ? " (any case)" : "") in \(opt.bounceable ? "EQ" : "UQ") form, mode \(opt.mode.rawValue), W5 v5r1 mainnet subwallet 0, cpu workers \(opt.cpuWorkers)")
+    print("search: ending \"\(opt.suffix)\"\(opt.ignoreCase ? " (any case)" : "") in \(opt.bounceable ? "EQ" : "UQ") form, mode \(opt.mode.rawValue), \(walletLabel), cpu workers \(opt.cpuWorkers)")
     print(String(format: "expected ~%.3g phrases; results -> %@ (phrases are never printed)", expected, opt.out))
 }
 
@@ -746,7 +776,7 @@ while true { autoreleasepool {
             let text = Array((shared.dumpLines.joined(separator: "\n") + "\n").utf8)
             _ = text.withUnsafeBufferPointer { write(fd, $0.baseAddress, text.count) }
             close(fd)
-            print("dumped \(dumped) phrases with their W5 addresses to \(opt.dumpFile)")
+            print("dumped \(dumped) phrases with their wallet addresses to \(opt.dumpFile)")
             exit(0)
         }
         if opt.bench > 0 && el >= opt.bench {

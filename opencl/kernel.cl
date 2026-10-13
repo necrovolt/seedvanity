@@ -1,5 +1,5 @@
 // seedvanity OpenCL kernels (OpenCL C 1.2): PBKDF2-HMAC-SHA512 and SLIP-10 ed25519 derivation.
-// Port of gpu/pbkdf2.metal. The host prepends sha512_consts.h (K512, IV512).
+// Port of macos/pbkdf2.metal. The host prepends sha512_consts.h (K512, IV512).
 //
 // keys:  16 big-endian words per thread = HMAC key zero-padded to 128 bytes
 //        (longer keys are pre-hashed with SHA-512 on the host).

@@ -108,6 +108,9 @@ cd opencl && make
 - Plain characters match as is, case-sensitive: `HELLO`.
 - `[...]` matches one of the listed characters, ranges allowed: `[a-z_]HELLO` = a lowercase letter or
   `_`, then `HELLO`.
+- `.` matches any character: `HELLO....` = `HELLO`, then any four characters. Telegram Money shows
+  the address in groups of four, so `HELL....` puts a word in the group before the last one. Only the
+  characters other than `.` count for the search time.
 - `--ignore-case` ignores the case of letters.
 - Addresses only contain `A-Z a-z 0-9 - _`. Quote patterns with `[...]` in the shell.
 - The ending is matched in the non-bounceable form `UQ…` that wallets show (`--form eq` for

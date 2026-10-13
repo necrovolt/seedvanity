@@ -92,7 +92,7 @@ do {
             print("""
             usage: seedvanity --suffix '[a-z_]HELLO' [--mode bip39-12|bip39-24|ton-24] [--wallet w5|tg] [--form uq|eq]
                              [--ignore-case] [--cpu N] [--count N] [--out FILE] [--bench SEC]
-              --suffix       ending; [..] = one of the listed characters, ranges allowed
+              --suffix       ending; [..] = one of the listed characters, ranges allowed; . = any character
               --wallet w5    wallet v5r1 (Tonkeeper, My Wallet), default; tg = Telegram Money, 12 words only
               --form uq      non-bounceable form UQ... (what wallets show), default
               --cpu N        CPU worker threads next to the GPU (default: performance cores - 2, 0 = GPU only);
@@ -109,7 +109,8 @@ do {
     _ = b64
 }
 
-// Suffix pattern: plain characters and [...] classes with ranges, e.g. "[a-z_]HELLO".
+// Suffix pattern: plain characters, [...] classes with ranges and . for any character, e.g. "[a-z_]HELLO",
+// "GRAM...." (GRAM, then any four characters).
 // pattern[k][c] == true if byte c is allowed at position k (counted from the start of the suffix).
 let pattern: [[Bool]] = {
     let b64 = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".utf8)
@@ -117,7 +118,7 @@ let pattern: [[Bool]] = {
     var out = [[Bool]]()
     var i = 0
     func allow(_ set: inout [Bool], _ c: UInt8) {
-        guard b64.contains(c) else { die("pattern may contain only A-Z a-z 0-9 - _ and [...] classes") }
+        guard b64.contains(c) else { die("pattern may contain only A-Z a-z 0-9 - _, [...] classes and .") }
         set[Int(c)] = true
         if opt.ignoreCase, (65...90).contains(c) || (97...122).contains(c) { set[Int(c ^ 0x20)] = true }
     }
@@ -137,13 +138,19 @@ let pattern: [[Bool]] = {
                 }
             }
             i = close + 1
+        } else if s[i] == UInt8(ascii: ".") {
+            for c in b64 { set[Int(c)] = true } // any character
+            i += 1
         } else {
             allow(&set, s[i])
             i += 1
         }
         out.append(set)
     }
-    if out.count > 10 { die("pattern longer than 10 characters is hopeless") }
+    let constrained = out.filter { $0.filter { $0 }.count < 64 }.count // positions other than .
+    if out.count > 46 { die("pattern longer than the address") }
+    if !out.isEmpty && constrained == 0 { die("pattern must contain at least one character other than .") }
+    if constrained > 10 { die("pattern with more than 10 characters is hopeless") }
     return out
 }()
 

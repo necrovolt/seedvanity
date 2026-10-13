@@ -210,14 +210,14 @@ static struct {
 } opt;
 
 static char root_dir[4096];
-static uint8_t pattern[16][256]; // pattern[k][c]: byte c allowed at position k of the ending
+static uint8_t pattern[48][256]; // pattern[k][c]: byte c allowed at position k of the ending
 static int pattern_len;
 
 static void usage(int code) {
     printf("usage: seedvanity --suffix '[a-z_]HELLO' [--mode bip39-12|bip39-24|ton-24] [--wallet w5|tg] [--form uq|eq]\n"
            "                 [--ignore-case] [--threads N] [--count N] [--out FILE] [--bench SEC]\n"
            "                 [--device N] [--list-devices]\n"
-           "  --suffix       ending; [..] = one of the listed characters, ranges allowed\n"
+           "  --suffix       ending; [..] = one of the listed characters, ranges allowed; . = any character\n"
            "  --wallet w5    wallet v5r1 (Tonkeeper, My Wallet), default; tg = Telegram Money, 12 words only\n"
            "  --form uq      non-bounceable form UQ... (what wallets show), default\n"
            "  --threads N    CPU threads for Ed25519 and addresses (default: all logical CPUs)\n"
@@ -231,7 +231,7 @@ static int is_b64(int c) {
 }
 
 static void allow(uint8_t *set, int c) {
-    if (!is_b64(c)) die("pattern may contain only A-Z a-z 0-9 - _ and [...] classes");
+    if (!is_b64(c)) die("pattern may contain only A-Z a-z 0-9 - _, [...] classes and .");
     set[c] = 1;
     if (opt.ignore_case && ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) set[c ^ 0x20] = 1;
 }
@@ -239,7 +239,7 @@ static void allow(uint8_t *set, int c) {
 static void parse_pattern(const char *s) {
     size_t i = 0, n = strlen(s);
     while (i < n) {
-        if (pattern_len >= 10) die("pattern longer than 10 characters is hopeless");
+        if (pattern_len >= 46) die("pattern longer than the address");
         uint8_t *set = pattern[pattern_len];
         memset(set, 0, 256);
         if (s[i] == '[') {
@@ -258,12 +258,24 @@ static void parse_pattern(const char *s) {
                 }
             }
             i = end + 1;
+        } else if (s[i] == '.') { // any character
+            for (int c = 0; c < 256; c++)
+                if (is_b64(c)) set[c] = 1;
+            i++;
         } else {
             allow(set, (unsigned char)s[i]);
             i++;
         }
         pattern_len++;
     }
+    int constrained = 0; // positions other than .
+    for (int k = 0; k < pattern_len; k++) {
+        int c = 0;
+        for (int b = 0; b < 256; b++) c += pattern[k][b];
+        if (c < 64) constrained++;
+    }
+    if (pattern_len && !constrained) die("pattern must contain at least one character other than .");
+    if (constrained > 10) die("pattern with more than 10 characters is hopeless");
 }
 
 static double expected_tries(void) {

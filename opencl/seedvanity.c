@@ -1,11 +1,11 @@
-// seedvanity (OpenCL): finds a seed phrase whose TON wallet address (W5 or the Telegram wallet) ends with a pattern.
+// seedvanity (OpenCL): finds a seed phrase whose TON wallet address (W5 or Telegram Money) ends with a pattern.
 //
 // Platforms: Linux and Windows with any OpenCL GPU (NVIDIA, AMD, Intel); builds on macOS for testing.
 // GPU: PBKDF2-HMAC-SHA512 (+ SLIP-10 m/44'/607'/0' for BIP39) in kernel.cl.
 // CPU: Ed25519 public key (Monocypher), wallet address, pattern check, in parallel threads.
 //
 // Wallets: W5 = v5r1, mainnet (network id -239), workchain 0, subwallet 0: the address Tonkeeper and
-// My Wallet show for W5. tg = the wallet built into Telegram (contract WalletTg), 12-word phrases only.
+// My Wallet show for W5. tg = Money, the wallet built into Telegram (contract WalletTg), 12-word phrases only.
 // Seed phrases are written only to the results file, never to stdout.
 // Every hit is re-derived on the CPU and by two independent libraries (@ton/ton, tonutils-go).
 
@@ -197,7 +197,7 @@ static void parallel(int nt, void (*fn)(void *, int, int), void *ctx) {
 
 enum { BIP12, BIP24, TON24 };
 static const char *MODE_NAME[] = {"bip39-12", "bip39-24", "ton-24"};
-// W5: wallet v5r1 (Tonkeeper, My Wallet). TG: the Telegram wallet, contract WalletTg
+// W5: wallet v5r1 (Tonkeeper, My Wallet). TG: Telegram Money, contract WalletTg
 enum { W5, TG };
 static const char *WALLET_NAME[] = {"w5", "tg"};
 
@@ -218,7 +218,7 @@ static void usage(int code) {
            "                 [--ignore-case] [--threads N] [--count N] [--out FILE] [--bench SEC]\n"
            "                 [--device N] [--list-devices]\n"
            "  --suffix       ending; [..] = one of the listed characters, ranges allowed\n"
-           "  --wallet w5    wallet v5r1 (Tonkeeper, My Wallet), default; tg = Telegram wallet, 12 words only\n"
+           "  --wallet w5    wallet v5r1 (Tonkeeper, My Wallet), default; tg = Telegram Money, 12 words only\n"
            "  --form uq      non-bounceable form UQ... (what wallets show), default\n"
            "  --threads N    CPU threads for Ed25519 and addresses (default: all logical CPUs)\n"
            "  --count N      stop after N verified hits (default 1)\n"
@@ -450,7 +450,7 @@ static void w5_account_id(const uint8_t pub[32], uint8_t id[32]) {
     sha256(si, sizeof si, id);
 }
 
-// Telegram wallet (WalletTg, github.com/ton-blockchain/tg-wallet-contract): the account code is an immutable
+// Telegram Money (WalletTg, github.com/ton-blockchain/tg-wallet-contract): the account code is an immutable
 // trampoline (a single cell that jumps to config[-123]); storage = revision:8 (0) | seqno:32 (0) |
 // subwalletId:32 | publicKey:256.
 static const uint8_t TG_TRAMPOLINE_HASH[32] = {
@@ -479,7 +479,7 @@ static void account_id(const uint8_t pub[32], uint8_t id[32]) {
 }
 
 static const char *wallet_label(void) {
-    return opt.wallet == TG ? "Telegram wallet (WalletTg), mainnet, subwallet 0x7FFF7F11"
+    return opt.wallet == TG ? "Telegram Money (WalletTg), mainnet, subwallet 0x7FFF7F11"
                             : "W5 (v5r1), mainnet, workchain 0, subwallet 0";
 }
 
@@ -1077,7 +1077,7 @@ static void self_test(void) {
         friendly(id, 0, uq);
         if (strcmp(uq, vec[v].want)) die("SELF-TEST FAILED: %s W5 address %s != %s", MODE_NAME[vec[v].mode], uq, vec[v].want);
     }
-    { // Telegram wallet address of the BIP39 test phrase, value from @ton/core
+    { // Telegram Money address of the BIP39 test phrase, value from @ton/core
         uint8_t priv[32], pub[32], id[32], s[64];
         cpu_pbkdf2((const uint8_t *)vec[0].phrase, strlen(vec[0].phrase), SALT_MNEMONIC, 8, 2048, s);
         cpu_slip10(s, priv);
@@ -1085,7 +1085,7 @@ static void self_test(void) {
         tg_account_id(pub, id);
         char uq[49];
         friendly(id, 0, uq);
-        if (strcmp(uq, "UQD4d2pzr-W4jzh1wOd52HrsH7rRagzkSUPC3_jCgMxmKz_L")) die("SELF-TEST FAILED: Telegram wallet address %s", uq);
+        if (strcmp(uq, "UQD4d2pzr-W4jzh1wOd52HrsH7rRagzkSUPC3_jCgMxmKz_L")) die("SELF-TEST FAILED: Telegram Money address %s", uq);
     }
     if (!ton_valid(vec[2].phrase, strlen(vec[2].phrase))) die("SELF-TEST FAILED: TON validity");
     // 3. GPU PBKDF2 + SLIP-10 == CPU, incl. >128-byte keys and chunked iterations
@@ -1194,7 +1194,7 @@ int main(int argc, char **argv) {
     make_mkey();
     double t0 = now_sec();
     self_test();
-    printf("GPU %s; self-test OK (GPU PBKDF2 and SLIP-10 == CPU, W5 and Telegram wallet addresses == @ton/ton) in %.1f s\n",
+    printf("GPU %s; self-test OK (GPU PBKDF2 and SLIP-10 == CPU, W5 and Telegram Money addresses == @ton/ton) in %.1f s\n",
            gpu.name, now_sec() - t0);
     double expected = expected_tries();
     if (!opt.dump && !opt.bench) {

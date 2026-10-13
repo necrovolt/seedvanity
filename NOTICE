@@ -24,6 +24,6 @@ This project includes material from, or derived from, third-party work:
    The code-cell hash of the TON wallet contract v5r1 is taken from @ton/ton (MIT License).
 
 5. macos/main.swift, opencl/seedvanity.c, verify/w5addr.mjs, verify-go/main.go
-   The Telegram wallet's account code (contracts/WalletTrampoline: its BOC and hash) and its storage
+   Telegram Money's account code (contracts/WalletTrampoline: its BOC and hash) and its storage
    layout are taken from https://github.com/ton-blockchain/tg-wallet-contract,
    Copyright (c) 2026 TON Core, MIT License.

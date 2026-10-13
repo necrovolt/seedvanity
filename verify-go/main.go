@@ -1,6 +1,6 @@
 // Independent check #2 (tonutils-go), same logic as verify/w5addr.mjs:
 // wallet "w5" (default): SeedToPrivateKeyWithOptions(..., WithBIP39(true)) = TON standard if valid, else BIP39
-// m/44'/607'/0'; W5 (v5r1) mainnet subwallet 0. wallet "tg": the Telegram wallet (WalletTg), a 12-word phrase is
+// m/44'/607'/0'; W5 (v5r1) mainnet subwallet 0. wallet "tg": the Telegram Money (WalletTg), a 12-word phrase is
 // always read as BIP39 m/44'/607'/0'; the official trampoline code + storage (revision 0, seqno 0,
 // subwalletId 0x7FFF7F11, public key), built with tonutils-go cells.
 // stdin: JSON lines {"words": "...", "wallet": "w5" | "tg"}; stdout: JSON lines {uq, eq, pub, as, tonValid, bip39Valid}

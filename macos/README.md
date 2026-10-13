@@ -15,12 +15,13 @@ is not needed.
 ./seedvanity --mode bip39-12 --bench 40                       # speed only
 caffeinate -i ./seedvanity --suffix HELLO --mode bip39-12     # caffeinate keeps the Mac awake
 caffeinate -i ./seedvanity --suffix '[a-z_]HELLO' --mode bip39-12
-caffeinate -i ./seedvanity --suffix '[a-z_]HELLO' --wallet tg      # Telegram wallet
+caffeinate -i ./seedvanity --suffix '[a-z_]HELLO' --wallet tg      # Telegram Money
 ```
 
-Options: `--wallet w5|tg` (`tg` = the Telegram wallet, 12-word phrases only), `--form uq|eq`, `--ignore-case`, `--count N` (stop after N hits), `--cpu N` (CPU worker
-threads, default: performance cores minus 2; `--cpu 0` = GPU only, gentler for daytime use),
-`--out FILE` (default `../results/found.txt`), `--bench SECONDS`.
+Options: `--wallet w5|tg` (`tg` = Telegram Money, 12-word phrases only), `--form uq|eq`,
+`--ignore-case`, `--count N` (stop after N hits), `--cpu N` (CPU worker threads, default: performance
+cores minus 2; `--cpu 0` = GPU only, gentler for daytime use), `--out FILE` (default
+`../results/found.txt`), `--bench SECONDS`.
 
 ## Long runs
 
@@ -29,7 +30,7 @@ restarts it (up to 5 times, silent notification); a hit shows a notification wit
 
 ```sh
 python3 detach.py ./supervise.sh '[a-z_]HELLO' bip39-12 ../results/found.txt ../results/run.log
-python3 detach.py ./supervise.sh '[a-z_]HELLO' bip39-12 ../results/found.txt ../results/run.log tg   # Telegram wallet
+# Telegram Money: add tg after the log file name
 tail -1 ../results/run.log                                    # progress
 pkill -f supervise.sh; pkill -f "seedvanity --suffix"         # stop (supervisor first)
 ```
@@ -54,7 +55,7 @@ line shows the state. `SEEDVANITY_THERMAL=serious|critical` simulates it for tes
   buffers (~1.3 GB per minute) and macOS killed the process after about an hour; memory now stays at
   ~125 MB.
 - Every start runs a self-test: GPU and CPU PBKDF2 against CommonCrypto (including keys longer than
-  128 bytes), W5 and Telegram wallet addresses of fixed test phrases against values from @ton/ton,
+  128 bytes), W5 and Telegram Money addresses of fixed test phrases against values from @ton/ton,
   BIP39 checksums.
 - `bench.swift` is a standalone benchmark of the PBKDF2 kernel (`swiftc -O bench.swift -o bench`).
 - `--dump N FILE` writes N random phrases with their addresses for external cross-checks with

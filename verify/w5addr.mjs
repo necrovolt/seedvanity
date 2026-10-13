@@ -1,7 +1,7 @@
 // Independent check #1 (@ton/ton + @ton/core + @ton/crypto + bip39 + ed25519-hd-key).
 // wallet "w5" (default), Tonkeeper import logic: phrase valid as TON standard -> TON key, else valid BIP39 ->
 //   m/44'/607'/0'; address of W5 (v5r1) mainnet subwallet 0.
-// wallet "tg", the wallet built into Telegram, for a 12-word phrase: BIP39 m/44'/607'/0'; address of WalletTg:
+// wallet "tg", Money, the wallet built into Telegram, for a 12-word phrase: BIP39 m/44'/607'/0'; address of WalletTg:
 //   official trampoline code + storage (revision 0, seqno 0, subwalletId 0x7FFF7F11, public key).
 // stdin: JSON lines {"words": "...", "wallet": "w5" | "tg"}; stdout: JSON lines {uq, eq, pub, as, tonValid, bip39Valid}
 import { createInterface } from "node:readline";

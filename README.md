@@ -7,7 +7,7 @@ example `…HELLO`. The phrase is an ordinary one, and after import the wallet s
 address:
 
 - **W5 (v5r1)** in **Tonkeeper** or **My Wallet** (default);
-- the wallet built into **Telegram** (contract `WalletTg`) with `--wallet tg`.
+- **Money**, the wallet built into **Telegram** (contract `WalletTg`), with `--wallet tg`.
 
 ## Versions
 
@@ -36,9 +36,9 @@ full key derivation, which is what the GPU is for.
    checksum) or a TON standard phrase (24 random words that pass the "basic seed" check).
 2. PBKDF2-HMAC-SHA512 on the GPU: 2048 iterations for BIP39, 100 000 for the TON standard.
 3. BIP39 only: SLIP-10 ed25519 derivation along `m/44'/607'/0'` (what Tonkeeper, My Wallet and
-   Telegram use).
+   Telegram Money use).
 4. Ed25519 public key.
-5. StateInit hash of the wallet (W5 v5r1 or the Telegram wallet), user-friendly address, pattern
+5. StateInit hash of the wallet (W5 v5r1 or Telegram Money), user-friendly address, pattern
    match.
 6. A hit is derived again independently and verified by two libraries before it is reported.
 
@@ -85,7 +85,7 @@ go build -o verify-go/w5addr ./verify-go     # tonutils-go verifier (w5addr.exe 
 ./macos/build.sh
 cd macos && ./seedvanity --mode bip39-12 --bench 40
 caffeinate -i ./seedvanity --suffix '[a-z_]HELLO' --mode bip39-12
-caffeinate -i ./seedvanity --suffix '[a-z_]HELLO' --wallet tg      # Telegram wallet
+caffeinate -i ./seedvanity --suffix '[a-z_]HELLO' --wallet tg      # Telegram Money
 ```
 
 **Linux** (Ubuntu: `sudo apt install build-essential ocl-icd-opencl-dev clinfo` plus the GPU driver
@@ -96,7 +96,7 @@ cd opencl && make
 ./seedvanity --list-devices
 ./seedvanity --mode bip39-12 --bench 60
 ./seedvanity --suffix '[a-z_]HELLO' --mode bip39-12
-./seedvanity --suffix '[a-z_]HELLO' --wallet tg      # Telegram wallet
+./seedvanity --suffix '[a-z_]HELLO' --wallet tg      # Telegram Money
 ```
 
 **Windows**: build in an MSYS2 UCRT64 shell, see [opencl/README.md](opencl/README.md).
@@ -117,7 +117,7 @@ cd opencl && make
 
 | Mode | Phrase | Imports into | Speed |
 |---|---|---|---|
-| `bip39-12` | 12 words, BIP39, path m/44'/607'/0' | Tonkeeper, My Wallet, Telegram | full |
+| `bip39-12` | 12 words, BIP39, path m/44'/607'/0' | Tonkeeper, My Wallet, Telegram Money | full |
 | `bip39-24` | 24 words, BIP39, path m/44'/607'/0' | Tonkeeper, My Wallet | about the same |
 | `ton-24` | 24 words, TON standard | Tonkeeper, My Wallet and other TON wallets | ~100x slower |
 
@@ -126,7 +126,7 @@ cd opencl && make
 | Wallet | Contract | Modes | Imports into |
 |---|---|---|---|
 | `w5` (default) | W5 (v5r1), mainnet (network id -239), workchain 0, subwallet 0 | all | Tonkeeper, My Wallet (select W5) |
-| `tg` | `WalletTg` ([ton-blockchain/tg-wallet-contract](https://github.com/ton-blockchain/tg-wallet-contract)), mainnet, subwallet `0x7FFF7F11` | `bip39-12` only | the wallet built into Telegram |
+| `tg` | `WalletTg` ([ton-blockchain/tg-wallet-contract](https://github.com/ton-blockchain/tg-wallet-contract)), mainnet, subwallet `0x7FFF7F11` | `bip39-12` only | Money in Telegram |
 
 Other options: `--count N` (stop after N hits, default 1), `--out FILE`, `--bench SECONDS`,
 `--no-verify` (not recommended). Platform-specific options are described in each folder's README.
@@ -140,10 +140,11 @@ Other options: `--count N` (stop after N hits, default 1), `--out FILE`, `--benc
 - Every hit is verified before it is reported: the key is derived again on the CPU (OpenCL version),
   then [`verify/w5addr.mjs`](verify/w5addr.mjs) (@ton/ton, @ton/core, @ton/crypto, bip39,
   ed25519-hd-key) and [`verify-go`](verify-go/main.go) (tonutils-go) re-derive the address with the
-  wallets' own import logic. A hit that does not match exactly is written as `UNVERIFIED HIT, DO NOT USE`.
+  wallets' own import logic. A hit that does not match exactly is written as
+  `UNVERIFIED HIT, DO NOT USE`.
 - Phrases that wallets could read two ways (valid both as BIP39 and as a TON standard phrase) are
   skipped: Tonkeeper tries the TON standard first, My Wallet tries BIP39 first.
-- A self-test runs on every start: GPU against CPU PBKDF2 (and SLIP-10), W5 and Telegram wallet
+- A self-test runs on every start: GPU against CPU PBKDF2 (and SLIP-10), W5 and Telegram Money
   addresses of fixed test phrases against values from @ton/ton, BIP39 test vectors. The test phrases
   in the source code are public test vectors or throwaway phrases created for the tests; never send
   funds to them.

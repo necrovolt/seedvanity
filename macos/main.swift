@@ -30,7 +30,7 @@ func orDie<T>(_ v: T?, _ msg: String) -> T {
 
 enum Mode: String { case bip12 = "bip39-12", bip24 = "bip39-24", ton24 = "ton-24" }
 
-// w5: wallet v5r1 (Tonkeeper, My Wallet). tg: the wallet built into Telegram, contract WalletTg:
+// w5: wallet v5r1 (Tonkeeper, My Wallet). tg: Money, the wallet built into Telegram, contract WalletTg:
 // a trampoline that jumps to config[-123], storage = revision 0, seqno 0, subwalletId, public key.
 enum WalletKind: String { case w5, tg }
 
@@ -93,7 +93,7 @@ do {
             usage: seedvanity --suffix '[a-z_]HELLO' [--mode bip39-12|bip39-24|ton-24] [--wallet w5|tg] [--form uq|eq]
                              [--ignore-case] [--cpu N] [--count N] [--out FILE] [--bench SEC]
               --suffix       ending; [..] = one of the listed characters, ranges allowed
-              --wallet w5    wallet v5r1 (Tonkeeper, My Wallet), default; tg = Telegram wallet, 12 words only
+              --wallet w5    wallet v5r1 (Tonkeeper, My Wallet), default; tg = Telegram Money, 12 words only
               --form uq      non-bounceable form UQ... (what wallets show), default
               --cpu N        CPU worker threads next to the GPU (default: performance cores - 2, 0 = GPU only);
                              they pause while macOS reports a serious thermal state
@@ -280,7 +280,7 @@ func w5AccountId(_ pub: [UInt8]) -> [UInt8] {
     // StateInit: split_depth 0, special 0, code 1, data 1, library 0 -> "00110" + tag = 0x34, 2 refs
     return sha256([0x02, 0x01, 0x34] + w5CodeDepth + [0x00, 0x00] + w5CodeHash + dataHash)
 }
-// Telegram wallet (WalletTg, github.com/ton-blockchain/tg-wallet-contract): the account code is an immutable
+// Telegram Money (WalletTg, github.com/ton-blockchain/tg-wallet-contract): the account code is an immutable
 // trampoline (jumps to config[-123]); storage = revision:8 (0) | seqno:32 (0) | subwalletId:32 | publicKey:256.
 let tgTrampolineHash = unhex("9149ae51c1e4689710cebf7830297b16acfbadb363a920a537893e7ffeeca768")
 let tgSubwalletId: UInt32 = 0x7FFF_7F11 // mainnet default
@@ -294,7 +294,7 @@ func tgAccountId(_ pub: [UInt8]) -> [UInt8] {
     return sha256([0x02, 0x01, 0x34, 0x00, 0x00, 0x00, 0x00] + tgTrampolineHash + dataHash)
 }
 @inline(__always) func accountId(_ pub: [UInt8]) -> [UInt8] { opt.wallet == .tg ? tgAccountId(pub) : w5AccountId(pub) }
-let walletLabel = opt.wallet == .tg ? "Telegram wallet (WalletTg), mainnet, subwallet 0x7FFF7F11" : "W5 (v5r1), mainnet, workchain 0, subwallet 0"
+let walletLabel = opt.wallet == .tg ? "Telegram Money (WalletTg), mainnet, subwallet 0x7FFF7F11" : "W5 (v5r1), mainnet, workchain 0, subwallet 0"
 
 func friendly(_ accountId: [UInt8], bounceable: Bool) -> [UInt8] {
     var b: [UInt8] = [bounceable ? 0x11 : 0x51, 0x00] + accountId
@@ -553,7 +553,7 @@ func selfTest(_ gpu: GPU) {
     do {
         let p = Array("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about".utf8)
         let got = String(decoding: friendly(tgAccountId(ed25519Public(slip10(cpuPBKDF2(p, saltMnemonic, 2048)))), bounceable: false), as: UTF8.self)
-        if got != "UQD4d2pzr-W4jzh1wOd52HrsH7rRagzkSUPC3_jCgMxmKz_L" { die("SELF-TEST FAILED: Telegram wallet address \(got)") }
+        if got != "UQD4d2pzr-W4jzh1wOd52HrsH7rRagzkSUPC3_jCgMxmKz_L" { die("SELF-TEST FAILED: Telegram Money address \(got)") }
     }
     // 3. CPU PBKDF2 on the SHA-512 instructions == CommonCrypto (incl. >128-byte keys)
     if cpu_has_sha512() != 0 {
@@ -580,7 +580,7 @@ let gpu = GPU()
 let t0 = Date()
 selfTest(gpu)
 let expected = pattern.reduce(1.0) { $0 * 64 / Double($1.filter { $0 }.count) }
-print("GPU \(gpu.dev.name); self-test OK (GPU and CPU PBKDF2 == CommonCrypto, W5 and Telegram wallet addresses == @ton/ton) in \(String(format: "%.1f", Date().timeIntervalSince(t0))) s")
+print("GPU \(gpu.dev.name); self-test OK (GPU and CPU PBKDF2 == CommonCrypto, W5 and Telegram Money addresses == @ton/ton) in \(String(format: "%.1f", Date().timeIntervalSince(t0))) s")
 if opt.dump == 0 && opt.bench == 0 {
     print("search: ending \"\(opt.suffix)\"\(opt.ignoreCase ? " (any case)" : "") in \(opt.bounceable ? "EQ" : "UQ") form, mode \(opt.mode.rawValue), \(walletLabel), cpu workers \(opt.cpuWorkers)")
     print(String(format: "expected ~%.3g phrases; results -> %@ (phrases are never printed)", expected, opt.out))
